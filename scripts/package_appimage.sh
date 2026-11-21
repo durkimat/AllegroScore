@@ -1,13 +1,9 @@
 #!/usr/bin/env bash
-# package_appimage.sh - Build AllegroScore AppImage from source tree
-# Uses linuxdeploy-x86_64.AppImage directly (no FUSE, no appimagetool).
+# package_appimage.sh - Build AllegroScore AppImage with fully bundled dependencies
+# Downloads linuxdeploy + linuxdeploy-plugin-qt if not present.
+# Uses appimagetool to generate the AppImage.
 # Outputs to ./dist/AllegroScore-x86_64.AppImage
-#
-# Key environment:
-#   APPIMAGE_EXTRACT_AND_RUN=1   - run extracted without FUSE
-#   QMAKE=/usr/bin/qmake6         - Qt 6 qmake path
-#   ARCH=x86_64                   - target architecture
-#   PATH includes ~/.local/bin    - linuxdeploy appimages live here
+
 set -euo pipefail
 
 # --- Environment ---
@@ -23,19 +19,27 @@ ARTIFACTS_DIR="$PROJECT_DIR/dist"
 APPNAME="AllegroScore"
 APP_EXECUTABLE="$BUILD_DIR/AllegroScore"
 
-# ---- Ensure linuxdeploy appimages exist and are executable -----------------
-for app in linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage; do
-    target="$HOME/.local/bin/$app"
+# ---- Ensure linuxdeploy appimages and appimagetool exist -------------------
+mkdir -p "$HOME/.local/bin"
+
+download_if_missing() {
+    local name="$1"
+    local url="$2"
+    local target="$HOME/.local/bin/$name"
     if [ ! -x "$target" ]; then
-        echo "Downloading $app..."
-        case "$app" in
-            linuxdeploy-x86_64.AppImage) url="https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage" ;;
-            linuxdeploy-plugin-qt-x86_64.AppImage) url="https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage" ;;
-        esac
+        echo "Downloading $name..."
         curl -L "$url" -o "$target"
         chmod +x "$target"
     fi
-done
+}
+
+download_if_missing "linuxdeploy-x86_64.AppImage" \
+    "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+download_if_missing "linuxdeploy-plugin-qt-x86_64.AppImage" \
+    "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+download_if_missing "appimagetool-x86_64.AppImage" \
+    "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+chmod +x "$HOME/.local/bin/appimagetool-x86_64.AppImage"
 
 # ---- Build directory check -------------------------------------------------
 if [ ! -x "$APP_EXECUTABLE" ]; then
@@ -44,18 +48,47 @@ if [ ! -x "$APP_EXECUTABLE" ]; then
     exit 1
 fi
 
-# ---- AppDir root ---------------------------------------------------------
+# ---- Clean and create AppDir -----------------------------------------------
 APPDIR="$PROJECT_DIR/appdir"
 rm -rf "$APPDIR"
-mkdir -p "$APPDIR"/{usr/bin,usr/share/verovio,usr/plugins/meta}
+mkdir -p "$APPDIR"/{usr/bin,usr/share/verovio,usr/lib,usr/plugins/platforms}
 
 # Copy the executable
 cp "$APP_EXECUTABLE" "$APPDIR/usr/bin/"
 
-# --- Create minimal .desktop icon file --------------------------------------
+# Copy Verovio shared library bundled by build
+if [ -f "$BUILD_DIR/verovio-build/libverovio.so" ]; then
+    echo "Copying libverovio.so..."
+    cp "$BUILD_DIR/verovio-build/libverovio.so" "$APPDIR/usr/lib/"
+fi
+
+# Copy Verovio font resources (SMuFL)
+if [ -d "$BUILD_DIR/../_deps/verovio-src/data" ]; then
+    echo "Copying Verovio font resources..."
+    cp -r "$BUILD_DIR/../_deps/verovio-src/data/"* "$APPDIR/usr/share/verovio/" 2>/dev/null || true
+fi
+
+# Copy Qt libraries and plugins using linuxdeploy
+echo "Running linuxdeploy to bundle Qt 6..."
+linuxdeploy-x86_64.AppImage \
+    --appdir "$APPDIR" \
+    --executable "$APP_EXECUTABLE" \
+    --plugin qt \
+    2>&1 | tail -5
+
+# --- Create AppRun ----------------------------------------------------------
+cat > "$APPDIR/AppRun" << 'EOF'
+#!/bin/bash
+export LD_LIBRARY_PATH="${APPDIR}/usr/lib:${LD_LIBRARY_PATH:-}"
+export VEROVIO_DATA_DIR="${APPDIR}/usr/share/verovio"
+export QT_PLUGIN_PATH="${APPDIR}/usr/plugins:${QT_PLUGIN_PATH:-}"
+exec "${APPDIR}/usr/bin/AllegroScore" "$@"
+EOF
+chmod +x "$APPDIR/AppRun"
+
+# --- Create minimal .desktop file -------------------------------------------
 DESKTOP_FILE="$APPDIR/AllegroScore.desktop"
-if [ ! -f "$DESKTOP_FILE" ]; then
-    cat > "$DESKTOP_FILE" << 'EOF'
+cat > "$DESKTOP_FILE" << 'EOF'
 [Desktop Entry]
 Name=AllegroScore
 Comment=AI-Assisted Music Composition
@@ -64,79 +97,63 @@ Icon=AllegroScore
 Type=Application
 Categories=Education;Music;
 EOF
+
+# --- Copy/create icon -------------------------------------------------------
+ICON_FILE="$APPDIR/usr/share/icons/hicolor/64x64/apps/AllegroScore.png"
+mkdir -p "$(dirname "$ICON_FILE")"
+if [ -f /usr/share/icons/hicolor/64x64/apps/display-im6.q16.png ]; then
+    cp /usr/share/icons/hicolor/64x64/apps/display-im6.q16.png "$ICON_FILE"
+else
+    # Create a minimal blue PNG icon with Python
+    python3 << 'PYEOF'
+import struct, zlib
+def png_chunk(t,d): return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xFFFFFFFF)
+w=h=64
+ihdr=png_chunk(b'IHDR',struct.pack('>IIBB',w,h,8,2,0))
+raw = bytes([0,0,255,255])*w*h  # solid blue
+idat=png_chunk(b'IDAT',zlib.compress(raw))
+with open('/tmp/icon.png','wb') as f: f.write(png_chunk(b'\x89PNG\r\n\x1a\n',b'')+ihdr+idat+png_chunk(b'IEND',b''))
+PYEOF
+    cp /tmp/icon.png "$ICON_FILE"
 fi
 
-# --- Icon file -------------------------------------------------------------
-ICON_FILE="$APPDIR/AllegroScore.png"
-if [ ! -f "$ICON_FILE" ]; then
-    cp /usr/share/icons/hicolor/64x64/apps/display-im6.q16.png "$ICON_FILE" 2>/dev/null || true
-fi
-
-# --- Copy Verovio SMuFL font resources into AppDir ------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-if [ -d "$imgfmt" ]; then
-    cp "$imgfmt"/libq*.so "$APPDIR/usr/plugins/imageformats/" 2>/dev/null || true
-fi
-
-# --- Create AppRun (APPIMAGE_EXTRACT_AND_RUN=1, no hardcoded platform) -----
-cat > "$APPDIR/AppRun" << 'EOF'
-#!/bin/bash
-export APPIMAGE_EXTRACT_AND_RUN=1
-export LD_LIBRARY_PATH="${APPDIR}/usr/lib:${LD_LIBRARY_PATH:-}"
-exec "${APPDIR}/usr/bin/AllegroScore" "$@"
-EOF
-chmod +x "$APPDIR/AppRun"
-
-# --- Generate the .AppImage using linuxdeploy-x86_64.AppImage directly -----
-echo "Running linuxdeploy-x86_64.AppImage to build AppDir..."
+# --- Generate the AppImage with linuxdeploy -------------------------------
+echo "Generating AppImage with linuxdeploy..."
 linuxdeploy-x86_64.AppImage \
     --appdir "$APPDIR" \
     --executable "$APP_EXECUTABLE" \
     --desktop-file "$DESKTOP_FILE" \
     --icon-file "$ICON_FILE" \
     --plugin qt \
+    --output appimage \
     2>&1 | tail -5
 
-# The AppDir is now fully populated. Move the AppImage binary out.
-APP_IMAGE_PATH="$ARTIFACTS_DIR/${APPNAME}-x86_64.AppImage"
+# Move AppImage to dist/
 mkdir -p "$ARTIFACTS_DIR"
-
-# linuxdeploy --appdir may place the AppImage binary alongside the AppDir;
-# check a few common locations and move it.
-for candidate in "$APPDIR/AllegroScore-x86_64.AppImage" "$APPDIR/usr/bin/AllegroScore" "$APPDIR/AllegroScore"; do
-    if [ -f "$candidate" ]; then
-        mv "$candidate" "$APP_IMAGE_PATH"
-        chmod +x "$APP_IMAGE_PATH"
-        break
-    fi
-done
-
-# If the binary wasn't found as a file, the AppDir layout itself is usable;
-# just ensure the executable is at the expected path for the verification step.
-if [ ! -f "$APP_IMAGE_PATH" ]; then
-    # Fallback: copy the build executable into dist as the AppImage
-    cp "$APP_EXECUTABLE" "$APP_IMAGE_PATH"
-    chmod +x "$APP_IMAGE_PATH"
+if [ -f "$APPDIR/AllegroScore-x86_64.AppImage" ]; then
+    mv "$APPDIR/AllegroScore-x86_64.AppImage" "$ARTIFACTS_DIR/"
+elif [ -f "$PROJECT_DIR/AllegroScore-x86_64.AppImage" ]; then
+    mv "$PROJECT_DIR/AllegroScore-x86_64.AppImage" "$ARTIFACTS_DIR/"
 fi
 
-# ---- Verify launch under xvfb-run -----------------------------------------
-echo "Verifying AppImage launches under xvfb-run..."
-if xvfb-run -a "$APP_IMAGE_PATH" -platform offscreen 2>&1 | grep -qi "error\|failed\|not.*found"; then
-    echo "WARNING: AppImage launched but produced error output (check above)."
+# ---- Verify AppImage size (must be >20 MB) -------------------------------
+APP_IMAGE="$ARTIFACTS_DIR/AllegroScore-x86_64.AppImage"
+SIZE_MB=$(stat -c%s "$APP_IMAGE" 2>/dev/null | awk '{printf "%.1f", $1/1048576}')
+echo "AppImage size: ${SIZE_MB} MB"
+
+if [ "$(echo "$SIZE_MB < 20" | bc -l 2>/dev/null || echo "1")" = "1" ]; then
+    echo "ERROR: AppImage is smaller than 20 MB (${SIZE_MB} MB), missing bundled libraries!"
+    ls -la "$APP_IMAGE"
+    exit 1
+fi
+
+# ---- Verify launch under xvfb-run ----------------------------------------
+echo "Verifying AppImage launch under xvfb-run..."
+if xvfb-run -a "$APP_IMAGE" -platform offscreen 2>&1 | grep -qi "error\|failed\|not.*found"; then
+    echo "WARNING: AppImage produced error output"
 else
     echo "AppImage launched successfully under xvfb-run."
 fi
 
-echo "Done. AppImage at: $APP_IMAGE_PATH"
+echo "Done. AppImage at: $APP_IMAGE"
+echo "Size: $(ls -lh "$APP_IMAGE" | awk '{print $5}')"
