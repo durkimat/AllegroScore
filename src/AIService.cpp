@@ -43,9 +43,14 @@ void AIService::sendMessage(const QString &message, const QString &scoreContext)
         return;
     }
 
+    QString model = m_model;
+    if (model.isEmpty() || model == "gpt-4o") {
+        model = "auto";
+    }
+
     QUrl url(m_baseUrl + "chat/completions");
     QJsonObject json;
-    json["model"] = m_model.isEmpty() ? "auto" : m_model;
+    json["model"] = model;
     json["stream"] = false;
 
     QJsonArray messages;
@@ -73,10 +78,23 @@ void AIService::sendMessage(const QString &message, const QString &scoreContext)
             QJsonDocument doc = QJsonDocument::fromJson(rawData);
             QJsonObject response = doc.object();
 
+            if (response.contains("error") && response["error"].isObject()) {
+                QJsonObject errorObj = response["error"].toObject();
+                QString errorMsg = errorObj["message"].toString("Unknown API error");
+                emit errorOccurred("API Error: " + errorMsg);
+                reply->deleteLater();
+                return;
+            }
+
             QString content;
             QJsonArray choices = response["choices"].toArray();
             if (!choices.isEmpty()) {
                 QJsonObject choice = choices[0].toObject();
+                if (choice["message"].isNull() && choice["text"].isNull()) {
+                    emit errorOccurred("API returned null choice");
+                    reply->deleteLater();
+                    return;
+                }
                 QJsonObject messageObj = choice["message"].toObject();
                 QJsonValue contentVal = messageObj["content"];
 

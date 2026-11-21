@@ -11,6 +11,9 @@
 #include "ScoreRenderer.h"
 #include "VerovioScoreRenderer.h"
 #include "AIService.h"
+#include "ScoreDocument.h"
+
+class NoteEntryToolbar;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -25,9 +28,14 @@ private slots:
     void onAIError(const QString &error);
     void loadSettings();
     void saveSettings();
+    void onNoteRequested(const QString &pitchStep, int octave, bool isRest);
+    void onAddMeasureRequested();
+    void onDocumentChanged();
+    void keyPressEvent(QKeyEvent *event) override;
 
 private:
     void setupUi();
+    void renderScore();
 
     QSplitter *mainSplitter;
     QWidget *scoreArea;
@@ -40,6 +48,8 @@ private:
     QLabel *scoreView;
     ScoreRenderer *scoreRenderer;
     AIService *aiService;
+    ScoreDocument *scoreDocument;
+    NoteEntryToolbar *noteToolbar;
     QString m_currentMusicXml;
 };
 

@@ -44,10 +44,14 @@ add_executable(AllegroScore
     src/MainWindow.cpp
     src/VerovioScoreRenderer.cpp
     src/AIService.cpp
+    src/ScoreDocument.cpp
+    src/NoteEntryToolbar.cpp
     include/MainWindow.h
     include/ScoreRenderer.h
     include/VerovioScoreRenderer.h
     include/AIService.h
+    include/ScoreDocument.h
+    include/NoteEntryToolbar.h
 )
 
 target_include_directories(AllegroScore PRIVATE include

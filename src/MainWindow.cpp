@@ -1,14 +1,25 @@
 #include "MainWindow.h"
+#include "NoteEntryToolbar.h"
 #include <QPushButton>
 #include <QSettings>
+#include <QKeyEvent>
+#include <QMessageBox>
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent), aiService(nullptr) {
+    : QMainWindow(parent), aiService(nullptr), scoreDocument(nullptr), noteToolbar(nullptr) {
     scoreRenderer = new VerovioScoreRenderer();
+    scoreDocument = new ScoreDocument(this);
     setupUi();
     loadSettings();
+    
+    connect(scoreDocument, &ScoreDocument::documentChanged, this, &MainWindow::onDocumentChanged);
+    connect(noteToolbar, &NoteEntryToolbar::noteRequested, this, &MainWindow::onNoteRequested);
+    connect(noteToolbar, &NoteEntryToolbar::addMeasureRequested, this, &MainWindow::onAddMeasureRequested);
+    
     setWindowTitle("AllegroScore");
     resize(1200, 800);
+    
+    renderScore();
 }
 
 MainWindow::~MainWindow() {
@@ -43,47 +54,19 @@ void MainWindow::setupUi() {
     scoreArea = new QWidget(this);
     QVBoxLayout *scoreLayout = new QVBoxLayout(scoreArea);
     scoreLayout->setContentsMargins(0, 0, 0, 0);
+    scoreLayout->setSpacing(0);
+
+    // Note Entry Toolbar
+    noteToolbar = new NoteEntryToolbar(scoreDocument, this);
+    scoreLayout->addWidget(noteToolbar);
 
     scoreView = new QLabel("Loading score...", scoreArea);
     scoreView->setAlignment(Qt::AlignCenter);
     scoreView->setStyleSheet("background-color: #ffffff; border: 1px solid #cccccc; font-size: 18px;");
     scoreView->setMinimumSize(600, 400);
     scoreView->setWordWrap(true);
+    scoreView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     scoreLayout->addWidget(scoreView);
-
-    // Load a demo MusicXML snippet
-    m_currentMusicXml = R"(
-        <?xml version="1.0" encoding="UTF-8"?>
-        <score-partwise version="3.1">
-            <part-list>
-                <score-part id="P1">
-                    <part-name>Music</part-name>
-                </score-part>
-            </part-list>
-            <part id="P1">
-                <measure number="1">
-                    <attributes>
-                        <divisions>1</divisions>
-                        <key><fifths>0</fifths></key>
-                        <time><beats>4</beats><beat-type>4</beat-type></time>
-                        <clef><sign>G</sign><line>2</line></clef>
-                    </attributes>
-                    <note>
-                        <pitch><step>C</step><octave>4</octave></pitch>
-                        <duration>4</duration>
-                        <type>whole</type>
-                    </note>
-                </measure>
-            </part>
-        </score-partwise>
-    )";
-
-    QImage scoreImage = scoreRenderer->renderMusicXmlToImage(m_currentMusicXml, 800, 400);
-    if (!scoreImage.isNull()) {
-        scoreView->setPixmap(QPixmap::fromImage(scoreImage));
-    } else {
-        scoreView->setText("Score rendering failed. Check Verovio integration.");
-    }
 
     // Chat Frame
     chatFrame = new QWidget(this);
@@ -164,4 +147,75 @@ void MainWindow::onAIResponse(const QString &response) {
 
 void MainWindow::onAIError(const QString &error) {
     chatHistory->append("<b>Error:</b> " + error + "\n");
+}
+
+void MainWindow::onNoteRequested(const QString &pitchStep, int octave, bool isRest) {
+    NoteEvent note;
+    note.pitchStep = pitchStep;
+    note.octave = octave;
+    note.accidental = scoreDocument->currentAccidental();
+    note.duration = scoreDocument->currentDuration();
+    note.isRest = isRest;
+    note.measureIndex = scoreDocument->currentMeasureIndex();
+    note.voiceIndex = 0;
+    note.beatPosition = scoreDocument->currentBeatPosition();
+    
+    scoreDocument->addNote(note);
+}
+
+void MainWindow::onAddMeasureRequested() {
+    // Already handled by the document
+}
+
+void MainWindow::onDocumentChanged() {
+    renderScore();
+}
+
+void MainWindow::renderScore() {
+    m_currentMusicXml = scoreDocument->generateMusicXml();
+    QImage scoreImage = scoreRenderer->renderMusicXmlToImage(m_currentMusicXml, 800, 400);
+    if (!scoreImage.isNull()) {
+        scoreView->setPixmap(QPixmap::fromImage(scoreImage));
+    } else {
+        scoreView->setText("Score rendering failed. Check Verovio integration.");
+    }
+}
+
+void MainWindow::keyPressEvent(QKeyEvent *event) {
+    static QStringList pitchKeys = {"C", "D", "E", "F", "G", "A", "B"};
+    
+    if (event->key() >= Qt::Key_A && event->key() <= Qt::Key_G) {
+        int idx = event->key() - Qt::Key_A;
+        if (idx < pitchKeys.size()) {
+            onNoteRequested(pitchKeys[idx], scoreDocument->currentOctave(), scoreDocument->currentIsRest());
+            event->accept();
+            return;
+        }
+    }
+    
+    if (event->key() == Qt::Key_Backspace || event->key() == Qt::Key_Delete) {
+        scoreDocument->removeLastNote();
+        event->accept();
+        return;
+    }
+    
+    if (event->key() == Qt::Key_Plus || event->key() == Qt::Key_Equal) {
+        scoreDocument->addMeasure();
+        event->accept();
+        return;
+    }
+    
+    if (event->matches(QKeySequence::Undo)) {
+        scoreDocument->undoStack()->undo();
+        event->accept();
+        return;
+    }
+    
+    if (event->matches(QKeySequence::Redo)) {
+        scoreDocument->undoStack()->redo();
+        event->accept();
+        return;
+    }
+    
+    QMainWindow::keyPressEvent(event);
 }
