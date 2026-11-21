@@ -73,19 +73,19 @@ if [ ! -f "$ICON_FILE" ]; then
 fi
 
 # --- Copy Verovio SMuFL font resources into AppDir ------------------------
-if [ -d "$BUILD_DIR/../_deps/verovio-src/data" ]; then
-    echo "Copying Verovio font resources..."
-    cp -r "$BUILD_DIR/../_deps/verovio-src/data/"* "$APPDIR/usr/share/verovio/" 2>/dev/null || true
-fi
 
-# --- Copy Qt platform plugins needed for native CachyOS display -------------
-for plat in offscreen linuxfb minimal; do
-    qplugin="/usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/${plat}.so"
-    if [ -f "$qplugin" ]; then
-        cp "$qplugin" "$APPDIR/usr/plugins/platforms/" 2>/dev/null || true
-    fi
-done
-imgfmt="/usr/lib/x86_64-linux-gnu/qt6/plugins/imageformats"
+
+
+
+
+
+
+
+
+
+
+
+
 if [ -d "$imgfmt" ]; then
     cp "$imgfmt"/libq*.so "$APPDIR/usr/plugins/imageformats/" 2>/dev/null || true
 fi
