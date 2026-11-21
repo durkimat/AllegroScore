@@ -9,7 +9,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui Network)
 
 include(FetchContent)
 
@@ -43,9 +43,11 @@ add_executable(AllegroScore
     src/main.cpp
     src/MainWindow.cpp
     src/VerovioScoreRenderer.cpp
+    src/AIService.cpp
     include/MainWindow.h
     include/ScoreRenderer.h
     include/VerovioScoreRenderer.h
+    include/AIService.h
 )
 
 target_include_directories(AllegroScore PRIVATE include
@@ -65,6 +67,7 @@ target_include_directories(AllegroScore PRIVATE include
 
 target_link_libraries(AllegroScore PRIVATE
     Qt6::Widgets
+    Qt6::Network
     verovio
 )
 

@@ -2,7 +2,7 @@
 #include <QPushButton>
 
 MainWindow::MainWindow(QWidget *parent)
-    : QMainWindow(parent) {
+    : QMainWindow(parent), aiService(nullptr) {
     scoreRenderer = new VerovioScoreRenderer();
     setupUi();
     setWindowTitle("AllegroScore");
@@ -11,6 +11,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow() {
     delete scoreRenderer;
+    if (aiService) delete aiService;
 }
 
 void MainWindow::setupUi() {
@@ -29,7 +30,7 @@ void MainWindow::setupUi() {
     scoreLayout->addWidget(scoreView);
 
     // Load a demo MusicXML snippet
-    QString demoMusicXml = R"(
+    m_currentMusicXml = R"(
         <?xml version="1.0" encoding="UTF-8"?>
         <score-partwise version="3.1">
             <part-list>
@@ -55,7 +56,7 @@ void MainWindow::setupUi() {
         </score-partwise>
     )";
 
-    QImage scoreImage = scoreRenderer->renderMusicXmlToImage(demoMusicXml, 800, 400);
+    QImage scoreImage = scoreRenderer->renderMusicXmlToImage(m_currentMusicXml, 800, 400);
     if (!scoreImage.isNull()) {
         scoreView->setPixmap(QPixmap::fromImage(scoreImage));
     } else {
@@ -66,6 +67,10 @@ void MainWindow::setupUi() {
     chatFrame = new QWidget(this);
     QVBoxLayout *chatLayout = new QVBoxLayout(chatFrame);
     
+    apiKeyInput = new QLineEdit(chatFrame);
+    apiKeyInput->setEchoMode(QLineEdit::Password);
+    apiKeyInput->setPlaceholderText("API Key...");
+
     chatHistory = new QTextEdit(chatFrame);
     chatHistory->setReadOnly(true);
     chatHistory->setPlaceholderText("AI Agent interaction will appear here...");
@@ -75,7 +80,10 @@ void MainWindow::setupUi() {
     chatInput->setPlaceholderText("Ask the AI Assistant...");
 
     QPushButton *sendButton = new QPushButton("Send", chatFrame);
+    connect(sendButton, &QPushButton::clicked, this, &MainWindow::onSendClicked);
 
+    chatLayout->addWidget(new QLabel("API Key"));
+    chatLayout->addWidget(apiKeyInput);
     chatLayout->addWidget(new QLabel("AI Assistant"));
     chatLayout->addWidget(chatHistory);
     chatLayout->addWidget(chatInput);
@@ -88,4 +96,34 @@ void MainWindow::setupUi() {
     mainSplitter->setStretchFactor(1, 3);
 
     setCentralWidget(mainSplitter);
+}
+
+void MainWindow::onSendClicked() {
+    QString apiKey = apiKeyInput->text().trimmed();
+    if (apiKey.isEmpty()) {
+        chatHistory->append("<b>System:</b> Please enter a valid API Key.\n");
+        return;
+    }
+
+    if (!aiService) {
+        aiService = new AIService(apiKey, this);
+        connect(aiService, &AIService::responseReceived, this, &MainWindow::onAIResponse);
+        connect(aiService, &AIService::errorOccurred, this, &MainWindow::onAIError);
+    }
+
+    QString message = chatInput->toPlainText().trimmed();
+    if (message.isEmpty()) return;
+
+    chatHistory->append("<b>User:</b> " + message + "\n");
+    chatInput->clear();
+
+    aiService->sendMessage(message, m_currentMusicXml);
+}
+
+void MainWindow::onAIResponse(const QString &response) {
+    chatHistory->append("<b>AI:</b> " + response + "\n");
+}
+
+void MainWindow::onAIError(const QString &error) {
+    chatHistory->append("<b>Error:</b> " + error + "\n");
 }

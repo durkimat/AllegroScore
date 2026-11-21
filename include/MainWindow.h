@@ -3,12 +3,14 @@
 
 #include <QMainWindow>
 #include <QTextEdit>
+#include <QLineEdit>
 #include <QSplitter>
 #include <QWidget>
 #include <QLabel>
 #include <QVBoxLayout>
 #include "ScoreRenderer.h"
 #include "VerovioScoreRenderer.h"
+#include "AIService.h"
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -16,6 +18,11 @@ class MainWindow : public QMainWindow {
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+
+private slots:
+    void onSendClicked();
+    void onAIResponse(const QString &response);
+    void onAIError(const QString &error);
 
 private:
     void setupUi();
@@ -25,8 +32,11 @@ private:
     QWidget *chatFrame;
     QTextEdit *chatHistory;
     QTextEdit *chatInput;
+    QLineEdit *apiKeyInput;
     QLabel *scoreView;
     ScoreRenderer *scoreRenderer;
+    AIService *aiService;
+    QString m_currentMusicXml;
 };
 
 #endif // MAINWINDOW_H
