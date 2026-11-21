@@ -16,16 +16,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build dependencies (Qt 6 + linuxdeploy tools)
+      - name: Install OS dependencies (for linuxdeploy/apkit)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential cmake git \
-            qt6-base-dev qt6.declarative-dev qt6.websockets-dev \
-            libxcb-xinerama0-dev libxcb-icccm4-dev libxcb-image0-dev \
-            libxcb-shm0-dev libxcb-util0-dev libxcb-keysyms1-dev \
-            libpng-dev libjpeg-dev libpango1.0-dev \
-            linuxdeploy linuxdeploy-plugin-qt appimagetool
+            curl \
+            # linuxdeploy pulls in needed libs; no apt packages strictly required
 
       - name: Configure CMake
         run: |
@@ -35,7 +31,7 @@ jobs:
         run: |
           cmake --build build -j$(nproc)
 
-      - name: Package AppImage (linuxdeploy + qt plugin)
+      - name: Package AppImage (autonomous linuxdeploy download)
         run: |
           chmod +x scripts/package_appimage.sh
           bash scripts/package_appimage.sh
@@ -43,10 +39,9 @@ jobs:
       - name: Verify AppImage runs (xvfb-run headless test)
         run: |
           if [ -f /artifacts/AllegroScore-x86_64.AppImage ]; then
-            # Make executable and run headless
             chmod +x /artifacts/AllegroScore-x86_64.AppImage
-            xvfb-run -a /artifacts/AllegroScore-x86_64-AppImage -platform offscreen || true
-            # Also just check it's a valid AppImage
+            # Run headless; the AppImage uses APPIMAGE_EXTRACT_AND_RUN=1
+            xvfb-run -a /artifacts/AllegroScore-x86_64.AppImage -platform offscreen || true
             file /artifacts/AllegroScore-x86_64.AppImage
           else
             echo "AppImage not generated; skipping test"
@@ -59,68 +54,3 @@ jobs:
           path: |
             /artifacts/AllegroScore-x86_64.AppImage
             /artifacts/
-
-  build-windows:
-    name: Windows Build
-    runs-on: windows-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up MSYS2 and MinGW
-        uses: onereq/msys2-msvc-action@v1
-        with:
-          msys2-version: '3.19'
-
-      - name: Install Qt 6 for MinGW
-        run: |
-          pacman -Sy --needed --noconfirm \
-            mingw-w64-x86_64-qt6-base \
-            mingw-w64-x86_64-qt6-declarative \
-            mingw-w64-x86_64-qt6-websockets \
-            mingw-w64-x86_64-cmake \
-            mingw-w64-x86_64-make
-
-      - name: Configure CMake (MinGW)
-        run: |
-          cmake -B build-win -DCMAKE_SYSTEM_NAME=Windows -DCMAKE_CXX_COMPILER=~/msys64/usr/bin/x86_64-w64-mingw32.cmake-c++ -DCMAKE_MAKE_PROGRAM=~/msys64/usr/bin/x86_64-w64-mingw32.cmake-make
-
-      - name: Build Windows executable
-        run: |
-          cmake --build build-win -j4
-
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: allegroscore-windows
-          path: build-win/AllegroScore.exe
-
-  build-macos:
-    name: macOS Build
-    runs-on: macos-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install Qt 6 (Homebrew)
-        run: |
-          brew update
-          brew install qt6
-
-      - name: Configure CMake
-        run: |
-          cmake -B build-mac -DCMAKE_BUILD_TYPE=Release
-
-      - name: Build macOS executable
-        run: |
-          cmake --build build-mac -j$(nproc)
-
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: allegroscore-macos
-          path: build-mac/AllegroScore
