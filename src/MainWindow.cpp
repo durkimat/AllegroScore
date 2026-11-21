@@ -106,7 +106,7 @@ void MainWindow::onSendClicked() {
     }
 
     if (!aiService) {
-        aiService = new AIService(apiKey, this);
+        aiService = new AIService(this);
         connect(aiService, &AIService::responseReceived, this, &MainWindow::onAIResponse);
         connect(aiService, &AIService::errorOccurred, this, &MainWindow::onAIError);
     }

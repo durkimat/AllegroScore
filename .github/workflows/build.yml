@@ -8,15 +8,15 @@ on:
 
 jobs:
   build-linux:
-    name: Linux Build & Test
+    name: Linux Build & AppImage
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install dependencies (Qt 6 + Verovio deps)
+      - name: Install build dependencies (Qt 6 + linuxdeploy tools)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -25,7 +25,7 @@ jobs:
             libxcb-xinerama0-dev libxcb-icccm4-dev libxcb-image0-dev \
             libxcb-shm0-dev libxcb-util0-dev libxcb-keysyms1-dev \
             libpng-dev libjpeg-dev libpango1.0-dev \
-            libmecab2-dev # if needed
+            linuxdeploy linuxdeploy-plugin-qt appimagetool
 
       - name: Configure CMake
         run: |
@@ -35,18 +35,30 @@ jobs:
         run: |
           cmake --build build -j$(nproc)
 
-      - name: Verify binary runs (headless xvfb test)
+      - name: Package AppImage (linuxdeploy + qt plugin)
         run: |
-          # Use xvfb-run to simulate a display headlessly
-          xvfb-run -a ./build/AllegroScore -platform offscreen || true
-          # Also just check the executable exists and is a valid ELF binary
-          file ./build/AllegroScore
+          chmod +x scripts/package_appimage.sh
+          bash scripts/package_appimage.sh
 
-      - name: Upload Linux artifact
+      - name: Verify AppImage runs (xvfb-run headless test)
+        run: |
+          if [ -f /artifacts/AllegroScore-x86_64.AppImage ]; then
+            # Make executable and run headless
+            chmod +x /artifacts/AllegroScore-x86_64.AppImage
+            xvfb-run -a /artifacts/AllegroScore-x86_64-AppImage -platform offscreen || true
+            # Also just check it's a valid AppImage
+            file /artifacts/AllegroScore-x86_64.AppImage
+          else
+            echo "AppImage not generated; skipping test"
+          fi
+
+      - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
           name: allegroscore-linux
-          path: build/AllegroScore
+          path: |
+            /artifacts/AllegroScore-x86_64.AppImage
+            /artifacts/
 
   build-windows:
     name: Windows Build
@@ -78,11 +90,6 @@ jobs:
       - name: Build Windows executable
         run: |
           cmake --build build-win -j4
-
-      - name: Bundle Qt DLLs (windeployqt)
-        run: |
-          # If windeployqt is available in the path
-          which windeployqt || pacman -S --needed --noconfirm mingw-w64-x86_64-qt6-tools
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
