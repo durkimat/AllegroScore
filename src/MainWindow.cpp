@@ -23,7 +23,7 @@ void MainWindow::loadSettings() {
                        QStringLiteral("AllegroScore"));
     apiKeyInput->setText(settings.value("apiKey", "").toString());
     baseUrlInput->setText(settings.value("baseUrl", "https://openai.com").toString());
-    modelInput->setText(settings.value("model", "gpt-4o").toString());
+    modelInput->setText(settings.value("model", "auto").toString());
 }
 
 void MainWindow::saveSettings() {

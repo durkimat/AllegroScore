@@ -27,7 +27,7 @@ void AIService::setApiKey(const QString &key) { m_apiKey = key; }
 void AIService::loadConfig() {
     m_baseUrl = m_settings->value("baseUrl", "https://openai.com").toString();
     if (!m_baseUrl.endsWith('/')) m_baseUrl.append('/');
-    m_model = m_settings->value("model", "gpt-4o").toString();
+    m_model = m_settings->value("model", "auto").toString();
     m_apiKey = m_settings->value("apiKey", "").toString();
 }
 
@@ -45,7 +45,8 @@ void AIService::sendMessage(const QString &message, const QString &scoreContext)
 
     QUrl url(m_baseUrl + "chat/completions");
     QJsonObject json;
-    json["model"] = m_model.isEmpty() ? "gpt-4o" : m_model;
+    json["model"] = m_model.isEmpty() ? "auto" : m_model;
+    json["stream"] = false;
 
     QJsonArray messages;
     QJsonObject systemMsg;
@@ -68,8 +69,44 @@ void AIService::sendMessage(const QString &message, const QString &scoreContext)
     QNetworkReply *reply = m_networkManager.post(request, QJsonDocument(json).toJson());
     connect(reply, &QNetworkReply::finished, [this, reply]() {
         if (reply->error() == QNetworkReply::NoError) {
-            QJsonObject response = QJsonDocument::fromJson(reply->readAll()).object();
-            QString content = response["choices"].toArray()[0].toObject()["message"].toObject()["content"].toString();
+            QByteArray rawData = reply->readAll();
+            QJsonDocument doc = QJsonDocument::fromJson(rawData);
+            QJsonObject response = doc.object();
+
+            QString content;
+            QJsonArray choices = response["choices"].toArray();
+            if (!choices.isEmpty()) {
+                QJsonObject choice = choices[0].toObject();
+                QJsonObject messageObj = choice["message"].toObject();
+                QJsonValue contentVal = messageObj["content"];
+
+                if (contentVal.isString()) {
+                    content = contentVal.toString();
+                } else if (contentVal.isArray()) {
+                    QJsonArray parts = contentVal.toArray();
+                    QStringList textParts;
+                    for (const QJsonValue &part : parts) {
+                        QJsonObject partObj = part.toObject();
+                        if (partObj["type"].toString() == "text" && partObj["text"].isString()) {
+                            textParts.append(partObj["text"].toString());
+                        }
+                    }
+                    content = textParts.join("\n");
+                }
+
+                if (content.isEmpty()) {
+                    if (choice["text"].isString()) {
+                        content = choice["text"].toString();
+                    } else if (messageObj["reasoning_content"].isString()) {
+                        content = messageObj["reasoning_content"].toString();
+                    }
+                }
+            }
+
+            if (content.isEmpty()) {
+                content = QString::fromUtf8(QJsonDocument(response).toJson(QJsonDocument::Compact));
+            }
+
             emit responseReceived(content);
         } else {
             emit errorOccurred(reply->errorString());
