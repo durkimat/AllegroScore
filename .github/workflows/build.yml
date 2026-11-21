@@ -9,50 +9,50 @@ on:
 jobs:
   build-linux:
     name: Linux Build & AppImage
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            curl build-essential cmake git \
-            qt6-base-dev qt6.declarative-dev \
+            curl build-essential cmake git ninja-build pkg-config \
+            qt6-base-dev qt6-base-dev-tools qt6-declarative-dev \
+            libgl1-mesa-dev libxkbcommon-x11-0 patchelf xvfb file \
             libxcb-xinerama0-dev libxcb-icccm4-dev libxcb-image0-dev \
             libxcb-shm0-dev libxcb-util0-dev libxcb-keysyms1-dev \
             libpng-dev libjpeg-dev libpango1.0-dev
 
       - name: Configure CMake
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -G Ninja
 
       - name: Build
         run: |
           cmake --build build -j$(nproc)
 
-      - name: Package AppImage (autonomous linuxdeploy download)
+      - name: Package AppImage
         run: |
           chmod +x scripts/package_appimage.sh
           bash scripts/package_appimage.sh
 
       - name: Verify AppImage runs (headless test)
         run: |
-          if [ -f /artifacts/AllegroScore-x86_64.AppImage ]; then
-            chmod +x /artifacts/AllegroScore-x86_64.AppImage
-            xvfb-run -a /artifacts/AllegroScore-x86_64.AppImage || true
-            file /artifacts/AllegroScore-x86_64.AppImage
+          if [ -f ./dist/AllegroScore-x86_64.AppImage ]; then
+            chmod +x ./dist/AllegroScore-x86_64.AppImage
+            APPIMAGE_EXTRACT_AND_RUN=1 xvfb-run -a ./dist/AllegroScore-x86_64.AppImage --smoke-test -platform offscreen || true
+            file ./dist/AllegroScore-x86_64.AppImage
           else
             echo "AppImage not generated; skipping test"
+            exit 1
           fi
 
       - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: allegroscore-linux
-          path: |
-            /artifacts/AllegroScore-x86_64.AppImage
-            /artifacts/
+          path: ./dist/AllegroScore-x86_64.AppImage

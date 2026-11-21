@@ -37,3 +37,6 @@ logs/
 .env.*.local
 dist/
 dist/
+
+# Build temp directories
+appdir/

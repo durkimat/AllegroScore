@@ -23,6 +23,8 @@ private slots:
     void onSendClicked();
     void onAIResponse(const QString &response);
     void onAIError(const QString &error);
+    void loadSettings();
+    void saveSettings();
 
 private:
     void setupUi();
@@ -33,6 +35,8 @@ private:
     QTextEdit *chatHistory;
     QTextEdit *chatInput;
     QLineEdit *apiKeyInput;
+    QLineEdit *baseUrlInput;
+    QLineEdit *modelInput;
     QLabel *scoreView;
     ScoreRenderer *scoreRenderer;
     AIService *aiService;

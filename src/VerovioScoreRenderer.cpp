@@ -10,15 +10,34 @@
 #include <QDebug>
 #include <QTemporaryFile>
 #include <QFile>
+#include <QCoreApplication>
+#include <QDir>
 #include <cstring>
 
 VerovioScoreRenderer::VerovioScoreRenderer() {
-    toolkit = new vrv::Toolkit();
+    toolkit = new vrv::Toolkit(false);
     vrv::Toolkit* tk = static_cast<vrv::Toolkit*>(toolkit);
-    
-    // Pass the absolute path to Verovio's embedded font resources
-    std::string fontPath = "/home/matthew/Projects/AllegroScore/build/_deps/verovio-src/data";
-    tk->SetResourcePath(fontPath);
+
+    QString resourcePath;
+    if (qEnvironmentVariableIsSet("VEROVIO_DATA_DIR")) {
+        resourcePath = qEnvironmentVariable("VEROVIO_DATA_DIR");
+    } else {
+        QString appDir = QCoreApplication::applicationDirPath();
+        QDir dir1(appDir + "/../share/verovio");
+        if (dir1.exists()) {
+            resourcePath = dir1.absolutePath();
+        } else {
+            QDir dir2(appDir + "/_deps/verovio-src/data");
+            if (dir2.exists()) {
+                resourcePath = dir2.absolutePath();
+            }
+        }
+    }
+
+    if (!resourcePath.isEmpty()) {
+        tk->SetResourcePath(resourcePath.toStdString());
+    }
+    tk->SetInputFrom("musicxml");
     tk->SetOptions("{\"pageWidth\": 210, \"pageHeight\": 297}");
 }
 

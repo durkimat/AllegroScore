@@ -1,10 +1,12 @@
 #include "MainWindow.h"
 #include <QPushButton>
+#include <QSettings>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), aiService(nullptr) {
     scoreRenderer = new VerovioScoreRenderer();
     setupUi();
+    loadSettings();
     setWindowTitle("AllegroScore");
     resize(1200, 800);
 }
@@ -12,6 +14,26 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow() {
     delete scoreRenderer;
     if (aiService) delete aiService;
+}
+
+void MainWindow::loadSettings() {
+    QSettings settings(QSettings::Format::IniFormat,
+                       QSettings::Scope::UserScope,
+                       QStringLiteral("AllegroScore"),
+                       QStringLiteral("AllegroScore"));
+    apiKeyInput->setText(settings.value("apiKey", "").toString());
+    baseUrlInput->setText(settings.value("baseUrl", "https://openai.com").toString());
+    modelInput->setText(settings.value("model", "gpt-4o").toString());
+}
+
+void MainWindow::saveSettings() {
+    QSettings settings(QSettings::Format::IniFormat,
+                       QSettings::Scope::UserScope,
+                       QStringLiteral("AllegroScore"),
+                       QStringLiteral("AllegroScore"));
+    settings.setValue("apiKey", apiKeyInput->text());
+    settings.setValue("baseUrl", baseUrlInput->text());
+    settings.setValue("model", modelInput->text());
 }
 
 void MainWindow::setupUi() {
@@ -71,6 +93,12 @@ void MainWindow::setupUi() {
     apiKeyInput->setEchoMode(QLineEdit::Password);
     apiKeyInput->setPlaceholderText("API Key...");
 
+    baseUrlInput = new QLineEdit(chatFrame);
+    baseUrlInput->setPlaceholderText("Base URL (e.g. https://openai.com or http://192.168.1.xxx)");
+
+    modelInput = new QLineEdit(chatFrame);
+    modelInput->setPlaceholderText("Model (e.g. gpt-4o, auto)");
+
     chatHistory = new QTextEdit(chatFrame);
     chatHistory->setReadOnly(true);
     chatHistory->setPlaceholderText("AI Agent interaction will appear here...");
@@ -84,6 +112,10 @@ void MainWindow::setupUi() {
 
     chatLayout->addWidget(new QLabel("API Key"));
     chatLayout->addWidget(apiKeyInput);
+    chatLayout->addWidget(new QLabel("Base URL"));
+    chatLayout->addWidget(baseUrlInput);
+    chatLayout->addWidget(new QLabel("Model"));
+    chatLayout->addWidget(modelInput);
     chatLayout->addWidget(new QLabel("AI Assistant"));
     chatLayout->addWidget(chatHistory);
     chatLayout->addWidget(chatInput);
@@ -105,11 +137,17 @@ void MainWindow::onSendClicked() {
         return;
     }
 
+    saveSettings();
+
     if (!aiService) {
         aiService = new AIService(this);
         connect(aiService, &AIService::responseReceived, this, &MainWindow::onAIResponse);
         connect(aiService, &AIService::errorOccurred, this, &MainWindow::onAIError);
     }
+
+    aiService->setApiKey(apiKeyInput->text());
+    aiService->setBaseUrl(baseUrlInput->text());
+    aiService->setModel(modelInput->text());
 
     QString message = chatInput->toPlainText().trimmed();
     if (message.isEmpty()) return;

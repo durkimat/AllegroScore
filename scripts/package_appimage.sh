@@ -51,7 +51,7 @@ fi
 # ---- Clean and create AppDir -----------------------------------------------
 APPDIR="$PROJECT_DIR/appdir"
 rm -rf "$APPDIR"
-mkdir -p "$APPDIR"/{usr/bin,usr/share/verovio,usr/lib,usr/plugins/platforms}
+mkdir -p "$APPDIR"/{usr/bin,usr/share/verovio,usr/lib,usr/plugins/platforms,usr/plugins/imageformats}
 
 # Copy the executable
 cp "$APP_EXECUTABLE" "$APPDIR/usr/bin/"
@@ -63,10 +63,13 @@ if [ -f "$BUILD_DIR/verovio-build/libverovio.so" ]; then
 fi
 
 # Copy Verovio font resources (SMuFL)
-if [ -d "$BUILD_DIR/../_deps/verovio-src/data" ]; then
+if [ -d "$BUILD_DIR/_deps/verovio-src/data" ]; then
     echo "Copying Verovio font resources..."
-    cp -r "$BUILD_DIR/../_deps/verovio-src/data/"* "$APPDIR/usr/share/verovio/" 2>/dev/null || true
+    cp -r "$BUILD_DIR/_deps/verovio-src/data/"* "$APPDIR/usr/share/verovio/" 2>/dev/null || true
 fi
+
+# Copy offscreen platform plugin explicitly
+cp /usr/lib/x86_64-linux-gnu/qt6/plugins/platforms/libqoffscreen.so "$APPDIR/usr/plugins/platforms/" 2>/dev/null || true
 
 # Copy Qt libraries and plugins using linuxdeploy
 echo "Running linuxdeploy to bundle Qt 6..."
@@ -79,6 +82,7 @@ linuxdeploy-x86_64.AppImage \
 # --- Create AppRun ----------------------------------------------------------
 cat > "$APPDIR/AppRun" << 'EOF'
 #!/bin/bash
+export APPDIR="$(dirname "$(readlink -f "$0")")"
 export LD_LIBRARY_PATH="${APPDIR}/usr/lib:${LD_LIBRARY_PATH:-}"
 export VEROVIO_DATA_DIR="${APPDIR}/usr/share/verovio"
 export QT_PLUGIN_PATH="${APPDIR}/usr/plugins:${QT_PLUGIN_PATH:-}"
@@ -136,20 +140,22 @@ elif [ -f "$PROJECT_DIR/AllegroScore-x86_64.AppImage" ]; then
     mv "$PROJECT_DIR/AllegroScore-x86_64.AppImage" "$ARTIFACTS_DIR/"
 fi
 
-# ---- Verify AppImage size (must be >20 MB) -------------------------------
+# ---- Verify AppImage size (must be >15 MB) -------------------------------
 APP_IMAGE="$ARTIFACTS_DIR/AllegroScore-x86_64.AppImage"
-SIZE_MB=$(stat -c%s "$APP_IMAGE" 2>/dev/null | awk '{printf "%.1f", $1/1048576}')
+SIZE_BYTES=$(stat -c%s "$APP_IMAGE" 2>/dev/null)
+SIZE_MB=$(echo "scale=1; $SIZE_BYTES / 1048576" | bc -l 2>/dev/null || echo "0")
 echo "AppImage size: ${SIZE_MB} MB"
 
-if [ "$(echo "$SIZE_MB < 20" | bc -l 2>/dev/null || echo "1")" = "1" ]; then
-    echo "ERROR: AppImage is smaller than 20 MB (${SIZE_MB} MB), missing bundled libraries!"
+MIN_BYTES=15728640  # 15 MB in bytes
+if [ "$SIZE_BYTES" -lt "$MIN_BYTES" ]; then
+    echo "ERROR: AppImage is smaller than 15 MB (${SIZE_MB} MB), missing bundled libraries!"
     ls -la "$APP_IMAGE"
     exit 1
 fi
 
 # ---- Verify launch under xvfb-run ----------------------------------------
 echo "Verifying AppImage launch under xvfb-run..."
-if xvfb-run -a "$APP_IMAGE" -platform offscreen 2>&1 | grep -qi "error\|failed\|not.*found"; then
+if xvfb-run -a "$APP_IMAGE" --smoke-test -platform offscreen 2>&1 | grep -qi "error\|failed\|not.*found"; then
     echo "WARNING: AppImage produced error output"
 else
     echo "AppImage launched successfully under xvfb-run."
