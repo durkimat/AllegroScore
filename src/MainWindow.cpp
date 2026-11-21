@@ -4,6 +4,7 @@
 #include <QSettings>
 #include <QKeyEvent>
 #include <QMessageBox>
+#include <QRegularExpression>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent), aiService(nullptr), scoreDocument(nullptr), noteToolbar(nullptr) {
@@ -13,6 +14,7 @@ MainWindow::MainWindow(QWidget *parent)
     loadSettings();
     
     connect(scoreDocument, &ScoreDocument::documentChanged, this, &MainWindow::onDocumentChanged);
+    connect(scoreDocument, &ScoreDocument::errorOccurred, this, &MainWindow::onScoreError);
     connect(noteToolbar, &NoteEntryToolbar::noteRequested, this, &MainWindow::onNoteRequested);
     connect(noteToolbar, &NoteEntryToolbar::addMeasureRequested, this, &MainWindow::onAddMeasureRequested);
     
@@ -143,10 +145,38 @@ void MainWindow::onSendClicked() {
 
 void MainWindow::onAIResponse(const QString &response) {
     chatHistory->append("<b>AI:</b> " + response + "\n");
+    
+    // Extract musicxml fenced code block from response
+    QString musicXml = extractMusicXmlFromResponse(response);
+    if (!musicXml.isEmpty()) {
+        scoreDocument->loadMusicXml(musicXml);
+        chatHistory->append("<b>System:</b> Loaded MusicXML from AI response.\n");
+    }
+}
+
+QString MainWindow::extractMusicXmlFromResponse(const QString &response) {
+    // Look for ```musicxml ... ``` fenced code block
+    QRegularExpression regex("```musicxml\\s*\\n([\\s\\S]*?)\\n```");
+    QRegularExpressionMatch match = regex.match(response);
+    if (match.hasMatch()) {
+        return match.captured(1).trimmed();
+    }
+    // Also try case insensitive
+    regex.setPattern("```musicxml\\s*\\n([\\s\\S]*?)\\n```");
+    regex.setPatternOptions(QRegularExpression::CaseInsensitiveOption);
+    match = regex.match(response);
+    if (match.hasMatch()) {
+        return match.captured(1).trimmed();
+    }
+    return QString();
 }
 
 void MainWindow::onAIError(const QString &error) {
     chatHistory->append("<b>Error:</b> " + error + "\n");
+}
+
+void MainWindow::onScoreError(const QString &error) {
+    chatHistory->append("<b>Score Error:</b> " + error + "\n");
 }
 
 void MainWindow::onNoteRequested(const QString &pitchStep, int octave, bool isRest) {
@@ -157,6 +187,7 @@ void MainWindow::onNoteRequested(const QString &pitchStep, int octave, bool isRe
     note.duration = scoreDocument->currentDuration();
     note.isRest = isRest;
     note.measureIndex = scoreDocument->currentMeasureIndex();
+    note.partIndex = scoreDocument->currentPartIndex();
     note.voiceIndex = 0;
     note.beatPosition = scoreDocument->currentBeatPosition();
     

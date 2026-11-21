@@ -31,7 +31,11 @@ private slots:
     void onNoteRequested(const QString &pitchStep, int octave, bool isRest);
     void onAddMeasureRequested();
     void onDocumentChanged();
+    void onScoreError(const QString &error);
     void keyPressEvent(QKeyEvent *event) override;
+
+private:
+    QString extractMusicXmlFromResponse(const QString &response);
 
 private:
     void setupUi();

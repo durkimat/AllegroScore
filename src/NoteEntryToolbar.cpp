@@ -6,12 +6,15 @@
 #include <QGridLayout>
 #include <QLabel>
 #include <QButtonGroup>
+#include <QComboBox>
 
 NoteEntryToolbar::NoteEntryToolbar(ScoreDocument *doc, QWidget *parent)
     : QToolBar("Note Entry", parent), m_doc(doc) {
     setMovable(false);
     setIconSize(QSize(24, 24));
     
+    setupPartSelector();
+    addSeparator();
     setupDurationButtons();
     addSeparator();
     setupAccidentalButtons();
@@ -130,6 +133,18 @@ void NoteEntryToolbar::setupPitchButtons() {
 
 void NoteEntryToolbar::onPitchButtonClicked(const QString &pitchStep, int octave) {
     emit noteRequested(pitchStep, octave, m_doc->currentIsRest());
+}
+
+void NoteEntryToolbar::setupPartSelector() {
+    m_partComboBox = new QComboBox(this);
+    m_partComboBox->addItems(ScoreDocument::partNames());
+    m_partComboBox->setCurrentIndex(m_doc->currentPartIndex());
+    m_partComboBox->setFixedWidth(100);
+    m_partComboBox->setToolTip("Select voice part (SATB)");
+    connect(m_partComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int index) {
+        m_doc->setCurrentPartIndex(index);
+    });
+    addWidget(m_partComboBox);
 }
 
 void NoteEntryToolbar::setupControlButtons() {

@@ -5,6 +5,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QWidget>
+#include <QComboBox>
 
 class ScoreDocument;
 
@@ -31,11 +32,13 @@ private:
     void setupAccidentalButtons();
     void setupPitchButtons();
     void setupControlButtons();
+    void setupPartSelector();
     
     ScoreDocument *m_doc;
     QActionGroup *m_durationGroup;
     QActionGroup *m_accidentalGroup;
     QWidget *m_pitchWidget;
+    QComboBox *m_partComboBox;
 };
 
 #endif // NOTE_ENTRY_TOOLBAR_H

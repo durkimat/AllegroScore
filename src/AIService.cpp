@@ -56,7 +56,7 @@ void AIService::sendMessage(const QString &message, const QString &scoreContext)
     QJsonArray messages;
     QJsonObject systemMsg;
     systemMsg["role"] = "system";
-    systemMsg["content"] = "You are an expert music composition assistant. Help the user with their score, suggest music theory, style adaptation, and error checking. Be concise.";
+    systemMsg["content"] = "You are an expert music composition assistant. When the user asks to create, edit, arrange, or harmonize music, you MUST include a valid MusicXML 3.1 document inside a fenced code block marked as 'musicxml' alongside a brief explanation. Example:\n```musicxml\n<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<score-partwise version=\"3.1\">\n  ...\n</score-partwise>\n```";
     messages.append(systemMsg);
 
     QJsonObject userMsg;
@@ -73,9 +73,16 @@ void AIService::sendMessage(const QString &message, const QString &scoreContext)
 
     QNetworkReply *reply = m_networkManager.post(request, QJsonDocument(json).toJson());
     connect(reply, &QNetworkReply::finished, [this, reply]() {
+        QByteArray rawData = reply->readAll();
+        int httpStatus = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        
         if (reply->error() == QNetworkReply::NoError) {
-            QByteArray rawData = reply->readAll();
             QJsonDocument doc = QJsonDocument::fromJson(rawData);
+            if (doc.isNull()) {
+                emit errorOccurred("Invalid JSON response: " + QString::fromUtf8(rawData));
+                reply->deleteLater();
+                return;
+            }
             QJsonObject response = doc.object();
 
             if (response.contains("error") && response["error"].isObject()) {
@@ -86,38 +93,37 @@ void AIService::sendMessage(const QString &message, const QString &scoreContext)
                 return;
             }
 
-            QString content;
             QJsonArray choices = response["choices"].toArray();
-            if (!choices.isEmpty()) {
-                QJsonObject choice = choices[0].toObject();
-                if (choice["message"].isNull() && choice["text"].isNull()) {
-                    emit errorOccurred("API returned null choice");
-                    reply->deleteLater();
-                    return;
-                }
-                QJsonObject messageObj = choice["message"].toObject();
-                QJsonValue contentVal = messageObj["content"];
+            if (choices.isEmpty() || choices[0].isNull()) {
+                emit errorOccurred("API returned empty choices: " + QString::fromUtf8(QJsonDocument(response).toJson(QJsonDocument::Compact)));
+                reply->deleteLater();
+                return;
+            }
 
-                if (contentVal.isString()) {
-                    content = contentVal.toString();
-                } else if (contentVal.isArray()) {
-                    QJsonArray parts = contentVal.toArray();
-                    QStringList textParts;
-                    for (const QJsonValue &part : parts) {
-                        QJsonObject partObj = part.toObject();
-                        if (partObj["type"].toString() == "text" && partObj["text"].isString()) {
-                            textParts.append(partObj["text"].toString());
-                        }
-                    }
-                    content = textParts.join("\n");
-                }
+            QJsonObject choice = choices[0].toObject();
+            QJsonObject messageObj = choice["message"].toObject();
+            QJsonValue contentVal = messageObj["content"];
 
-                if (content.isEmpty()) {
-                    if (choice["text"].isString()) {
-                        content = choice["text"].toString();
-                    } else if (messageObj["reasoning_content"].isString()) {
-                        content = messageObj["reasoning_content"].toString();
+            QString content;
+            if (contentVal.isString()) {
+                content = contentVal.toString();
+            } else if (contentVal.isArray()) {
+                QJsonArray parts = contentVal.toArray();
+                QStringList textParts;
+                for (const QJsonValue &part : parts) {
+                    QJsonObject partObj = part.toObject();
+                    if (partObj["type"].toString() == "text" && partObj["text"].isString()) {
+                        textParts.append(partObj["text"].toString());
                     }
+                }
+                content = textParts.join("\n");
+            }
+
+            if (content.isEmpty()) {
+                if (choice["text"].isString()) {
+                    content = choice["text"].toString();
+                } else if (messageObj["reasoning_content"].isString()) {
+                    content = messageObj["reasoning_content"].toString();
                 }
             }
 
@@ -127,7 +133,11 @@ void AIService::sendMessage(const QString &message, const QString &scoreContext)
 
             emit responseReceived(content);
         } else {
-            emit errorOccurred(reply->errorString());
+            QString errorDetail = QString("HTTP %1: %2").arg(httpStatus).arg(reply->errorString());
+            if (!rawData.isEmpty()) {
+                errorDetail += "\nRaw response: " + QString::fromUtf8(rawData);
+            }
+            emit errorOccurred(errorDetail);
         }
         reply->deleteLater();
     });

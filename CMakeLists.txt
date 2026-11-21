@@ -9,7 +9,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui Network)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui Network Xml)
 
 include(FetchContent)
 
@@ -72,6 +72,7 @@ target_include_directories(AllegroScore PRIVATE include
 target_link_libraries(AllegroScore PRIVATE
     Qt6::Widgets
     Qt6::Network
+    Qt6::Xml
     verovio
 )
 
