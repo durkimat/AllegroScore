@@ -97,7 +97,9 @@ fi
 
 # --- Create AppRun script ---
 # Uses APPIMAGE_EXTRACT_AND_RUN=1 so the AppImage runs without FUSE
-# (critical for Docker/CI environments)
+# (critical for Docker/CI environments). Platform is left unset so the
+# user's native platform (CachyOS X11/Wayland) is used; the bundled
+# plugins ensure all common backends are available.
 cat > "$APPIMAGE_ROOT/AppRun" << 'EOF'
 #!/bin/bash
 # Run as extracted AppImage (no FUSE required)
@@ -109,9 +111,6 @@ export LD_LIBRARY_PATH="${APPIMAGE_ROOT}/usr/lib:${LD_LIBRARY_PATH:-}"
 
 # Verovio font resources - must match what vrv::Resources::SetPath expects
 export VEROVIO_DATA_DIR="${APPIMAGE_ROOT}/usr/share/verovio"
-
-# Platform: offscreen (headless/CLI compatible)
-export QT_QPA_PLATFORM=offscreen
 
 # Execute the bundled executable
 exec "${APPIMAGE_ROOT}/usr/bin/AllegroScore" "$@"
