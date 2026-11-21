@@ -15,6 +15,10 @@
 VerovioScoreRenderer::VerovioScoreRenderer() {
     toolkit = new vrv::Toolkit();
     vrv::Toolkit* tk = static_cast<vrv::Toolkit*>(toolkit);
+    
+    // Pass the absolute path to Verovio's embedded font resources
+    std::string fontPath = "/home/matthew/Projects/AllegroScore/build/_deps/verovio-src/data";
+    tk->SetResourcePath(fontPath);
     tk->SetOptions("{\"pageWidth\": 210, \"pageHeight\": 297}");
 }
 
