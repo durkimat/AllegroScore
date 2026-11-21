@@ -13,6 +13,9 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui Network)
 
 include(FetchContent)
 
+# --- Build all libraries statically so everything is embedded in the executable ---
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+
 # --- Verovio (MusicXML/MEI -> SVG C++ toolkit) ---
 FetchContent_Declare(
     verovio
@@ -21,14 +24,8 @@ FetchContent_Declare(
 )
 set(VEROVIO_BUILD_CLI OFF CACHE INTERNAL "" FORCE)
 set(VEROVIO_BUILD_TESTS OFF CACHE INTERNAL "" FORCE)
-set(BUILD_AS_LIBRARY ON CACHE INTERNAL "" FORCE)
-set(NO_HUMDRUM_SUPPORT ON CACHE INTERNAL "" FORCE)
-set(NO_DARMS_SUPPORT ON CACHE INTERNAL "" FORCE)
-set(NO_EDIT_SUPPORT OFF CACHE INTERNAL "" FORCE)
-set(NO_RUNTIME ON CACHE INTERNAL "" FORCE)
-FetchContent_Populate(verovio)
-
-add_subdirectory(${verovio_SOURCE_DIR}/cmake ${CMAKE_CURRENT_BINARY_DIR}/verovio-build)
+set(VEROVIO_USE_STATIC_LIBS ON CACHE INTERNAL "" FORCE)
+FetchContent_MakeAvailable(verovio)
 
 # --- nanosvg (SVG -> QImage rasterizer, header-only) ---
 FetchContent_Declare(
@@ -36,7 +33,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/memononen/nanosvg.git
     GIT_TAG        master
 )
-FetchContent_Populate(nanosvg)
+FetchContent_MakeAvailable(nanosvg)
 
 # --- AllegroScore target ---
 add_executable(AllegroScore
@@ -69,6 +66,7 @@ target_link_libraries(AllegroScore PRIVATE
     Qt6::Widgets
     Qt6::Network
     verovio
+    pugixml
 )
 
 install(TARGETS AllegroScore RUNTIME DESTINATION bin)
