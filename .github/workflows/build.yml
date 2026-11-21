@@ -16,12 +16,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install OS dependencies (for linuxdeploy/apkit)
+      - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            curl \
-            # linuxdeploy pulls in needed libs; no apt packages strictly required
+            curl build-essential cmake git \
+            qt6-base-dev qt6.declarative-dev \
+            libxcb-xinerama0-dev libxcb-icccm4-dev libxcb-image0-dev \
+            libxcb-shm0-dev libxcb-util0-dev libxcb-keysyms1-dev \
+            libpng-dev libjpeg-dev libpango1.0-dev
 
       - name: Configure CMake
         run: |
@@ -36,18 +39,17 @@ jobs:
           chmod +x scripts/package_appimage.sh
           bash scripts/package_appimage.sh
 
-      - name: Verify AppImage runs (xvfb-run headless test)
+      - name: Verify AppImage runs (headless test)
         run: |
           if [ -f /artifacts/AllegroScore-x86_64.AppImage ]; then
             chmod +x /artifacts/AllegroScore-x86_64.AppImage
-            # Run headless; the AppImage uses APPIMAGE_EXTRACT_AND_RUN=1
-            xvfb-run -a /artifacts/AllegroScore-x86_64.AppImage -platform offscreen || true
+            xvfb-run -a /artifacts/AllegroScore-x86_64.AppImage || true
             file /artifacts/AllegroScore-x86_64.AppImage
           else
             echo "AppImage not generated; skipping test"
           fi
 
-      - name: Upload Linux artifacts
+      - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: allegroscore-linux
